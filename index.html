@@ -1,42 +1,76 @@
-<!doctype html><html><head><meta charset="utf-8"><title>Blockchain Voting</title>
+<!doctype html><html><head><meta charset="utf-8"><title>Blockchain Voting Rooms</title>
 <style>
-body{font-family:system-ui;max-width:420px;margin:40px auto;padding:0 16px}
-button{padding:8px 14px;margin:4px 0;cursor:pointer}
-.c{display:flex;justify-content:space-between;align-items:center;border:1px solid #ccc;border-radius:6px;padding:8px 12px;margin:6px 0}
-#s{color:#666;font-size:14px}
+body{font-family:system-ui;max-width:480px;margin:32px auto;padding:0 16px}
+input{padding:7px;margin:3px 0;width:100%;box-sizing:border-box}
+button{padding:8px 14px;margin:4px 4px 4px 0;cursor:pointer}
+fieldset{border:1px solid #ccc;border-radius:8px;margin:14px 0}
+.c{display:flex;justify-content:space-between;align-items:center;border:1px solid #ddd;border-radius:6px;padding:8px 12px;margin:6px 0}
+#s{color:#666;font-size:14px;min-height:18px}
+small{color:#888}
 </style></head><body>
-<h2>🗳️ Blockchain Voting</h2>
-<p id="s">Connect your wallet to vote.</p>
+<h2>🗳️ Blockchain Voting Rooms</h2>
+<p id="s">Connect your wallet to start.</p>
 <button id="conn" onclick="connect()">Connect MetaMask</button>
-<div id="list"></div>
+<div id="app" style="display:none">
+  <fieldset><legend>Create an election</legend>
+    <input id="ctitle" placeholder="Election title">
+    <input id="cpw" placeholder="Room password">
+    <button onclick="createE()">Create room</button>
+    <div><small>You become the creator and can add candidates / stop it.</small></div>
+  </fieldset>
+  <fieldset><legend>Open a room</legend>
+    <input id="rid" placeholder="Room ID (number)">
+    <input id="rpw" placeholder="Room password">
+    <button onclick="openE()">Open</button>
+  </fieldset>
+  <div id="room"></div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
 <script>
 const ADDR="0xYOUR_CONTRACT_ADDRESS";
-const ABI=["function getTotalCandidates() view returns (uint)","function candidates(uint) view returns (string)","function getVoteCount(uint) view returns (uint)","function active() view returns (bool)","function vote(uint)"];
-let signer;
+const ABI=["function electionCount() view returns (uint)","function createElection(string title,string password) returns (uint)","function addCandidate(uint id,string name)","function vote(uint id,uint cand,string password)","function stopElection(uint id)","function getInfo(uint id) view returns (string title,address creator,bool active,uint candidateCount)","function getCandidate(uint id,uint i) view returns (string name,uint votes)","function hasVoted(uint id,address who) view returns (bool)","event ElectionCreated(uint indexed id,address indexed creator,string title)"];
+let signer,me,C,room;
+const S=t=>document.getElementById("s").textContent=t;
 async function connect(){
   if(!window.ethereum)return alert("Install MetaMask");
   const p=new ethers.BrowserProvider(window.ethereum);
   await p.send("eth_requestAccounts",[]);
-  if((await p.getNetwork()).chainId!==11155111n)return alert("Switch MetaMask to Sepolia");
-  signer=await p.getSigner();
+  if((await p.getNetwork()).chainId!==11155111n)return alert("Switch MetaMask to the Sepolia network");
+  signer=await p.getSigner(); me=(await signer.getAddress()).toLowerCase();
+  C=new ethers.Contract(ADDR,ABI,signer);
   document.getElementById("conn").style.display="none";
-  load();
+  document.getElementById("app").style.display="block";
+  S("Connected: "+me);
 }
-async function load(){
-  const c=new ethers.Contract(ADDR,ABI,signer);
-  const n=Number(await c.getTotalCandidates()), live=await c.active();
-  document.getElementById("s").textContent=live?"Election is live — one vote per address.":"Election has ended.";
-  let h="";
-  for(let i=0;i<n;i++)
-    h+=`<div class="c"><span>${await c.candidates(i)} — <b>${await c.getVoteCount(i)}</b> votes</span>`+(live?`<button onclick="vote(${i})">Vote</button>`:"")+`</div>`;
-  document.getElementById("list").innerHTML=h;
-}
-async function vote(i){
+async function createE(){
   try{
-    const tx=await new ethers.Contract(ADDR,ABI,signer).vote(i);
-    document.getElementById("s").textContent="Submitting vote…";
-    await tx.wait(); load();
-  }catch(e){alert(e.reason||e.message)}
+    S("Creating room…");
+    const tx=await C.createElection(ctitle.value,cpw.value);
+    const r=await tx.wait();
+    const ev=r.logs.map(l=>{try{return C.interface.parseLog(l)}catch{}}).find(x=>x&&x.name==="ElectionCreated");
+    S("Room created! Share Room ID = "+ev.args.id+" and the password with voters.");
+  }catch(e){S(e.reason||e.message)}
 }
+async function openE(){
+  try{
+    const id=BigInt(rid.value), pw=rpw.value;
+    const info=await C.getInfo(id);
+    room={id,pw,creator:info[1].toLowerCase(),active:info[2]};
+    await render(info);
+  }catch(e){S(e.reason||e.message)}
+}
+async function render(info){
+  const n=Number(info[3]), mine=room.creator===me, voted=await C.hasVoted(room.id,me);
+  let h=`<fieldset><legend>${info[0]} (Room ${room.id})</legend>`+
+    `<small>Creator: ${room.creator}${mine?" (you)":""} · ${room.active?"LIVE":"ENDED"}${voted?" · you voted":""}</small>`;
+  for(let i=0;i<n;i++){const c=await C.getCandidate(room.id,i);
+    h+=`<div class="c"><span>${c[0]} — <b>${c[1]}</b></span>`+
+      (room.active&&!voted?`<button onclick="castV(${i})">Vote</button>`:"")+`</div>`;}
+  if(mine&&room.active)h+=`<input id="newc" placeholder="New candidate name"><button onclick="addC()">Add candidate</button><button onclick="stopE()">Stop election</button>`;
+  document.getElementById("room").innerHTML=h+`</fieldset>`;
+}
+async function refresh(){await render(await C.getInfo(room.id));}
+async function castV(i){try{S("Submitting vote…");await(await C.vote(room.id,i,room.pw)).wait();S("Voted!");refresh();}catch(e){S(e.reason||e.message)}}
+async function addC(){try{S("Adding candidate…");await(await C.addCandidate(room.id,newc.value)).wait();S("Added.");refresh();}catch(e){S(e.reason||e.message)}}
+async function stopE(){try{S("Stopping…");await(await C.stopElection(room.id)).wait();room.active=false;S("Election stopped.");refresh();}catch(e){S(e.reason||e.message)}}
 </script></body></html>
