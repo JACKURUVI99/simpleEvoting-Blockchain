@@ -27,7 +27,7 @@ small{color:#888}
 </div>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
 <script>
-const ADDR="0xYOUR_CONTRACT_ADDRESS";
+const ADDR="0xD33feaeed385B3AE5932C3a50f41FC3d3FA311Ec";
 const ABI=["function electionCount() view returns (uint)","function createElection(string title,string password) returns (uint)","function addCandidate(uint id,string name)","function vote(uint id,uint cand,string password)","function stopElection(uint id)","function getInfo(uint id) view returns (string title,address creator,bool active,uint candidateCount)","function getCandidate(uint id,uint i) view returns (string name,uint votes)","function hasVoted(uint id,address who) view returns (bool)","event ElectionCreated(uint indexed id,address indexed creator,string title)"];
 let signer,me,C,room;
 const S=t=>document.getElementById("s").textContent=t;
