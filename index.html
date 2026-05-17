@@ -1,0 +1,42 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Blockchain Voting</title>
+<style>
+body{font-family:system-ui;max-width:420px;margin:40px auto;padding:0 16px}
+button{padding:8px 14px;margin:4px 0;cursor:pointer}
+.c{display:flex;justify-content:space-between;align-items:center;border:1px solid #ccc;border-radius:6px;padding:8px 12px;margin:6px 0}
+#s{color:#666;font-size:14px}
+</style></head><body>
+<h2>🗳️ Blockchain Voting</h2>
+<p id="s">Connect your wallet to vote.</p>
+<button id="conn" onclick="connect()">Connect MetaMask</button>
+<div id="list"></div>
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<script>
+const ADDR="0xYOUR_CONTRACT_ADDRESS";
+const ABI=["function getTotalCandidates() view returns (uint)","function candidates(uint) view returns (string)","function getVoteCount(uint) view returns (uint)","function active() view returns (bool)","function vote(uint)"];
+let signer;
+async function connect(){
+  if(!window.ethereum)return alert("Install MetaMask");
+  const p=new ethers.BrowserProvider(window.ethereum);
+  await p.send("eth_requestAccounts",[]);
+  if((await p.getNetwork()).chainId!==11155111n)return alert("Switch MetaMask to Sepolia");
+  signer=await p.getSigner();
+  document.getElementById("conn").style.display="none";
+  load();
+}
+async function load(){
+  const c=new ethers.Contract(ADDR,ABI,signer);
+  const n=Number(await c.getTotalCandidates()), live=await c.active();
+  document.getElementById("s").textContent=live?"Election is live — one vote per address.":"Election has ended.";
+  let h="";
+  for(let i=0;i<n;i++)
+    h+=`<div class="c"><span>${await c.candidates(i)} — <b>${await c.getVoteCount(i)}</b> votes</span>`+(live?`<button onclick="vote(${i})">Vote</button>`:"")+`</div>`;
+  document.getElementById("list").innerHTML=h;
+}
+async function vote(i){
+  try{
+    const tx=await new ethers.Contract(ADDR,ABI,signer).vote(i);
+    document.getElementById("s").textContent="Submitting vote…";
+    await tx.wait(); load();
+  }catch(e){alert(e.reason||e.message)}
+}
+</script></body></html>
