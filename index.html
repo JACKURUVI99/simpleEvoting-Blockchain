@@ -36,9 +36,13 @@ let signer,me,C,room;
 const S=t=>document.getElementById("s").textContent=t;
 async function connect(){
   if(!window.ethereum)return alert("Install MetaMask");
-  const p=new ethers.BrowserProvider(window.ethereum);
+  let p=new ethers.BrowserProvider(window.ethereum);
   await p.send("eth_requestAccounts",[]);
-  if((await p.getNetwork()).chainId!==11155111n)return alert("Switch MetaMask to the Sepolia network");
+  if((await p.getNetwork()).chainId!==11155111n){
+    try{await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:"0xaa36a7"}]});}
+    catch{return alert("Approve the switch to the Sepolia network in MetaMask, then click Connect again.");}
+    p=new ethers.BrowserProvider(window.ethereum);
+  }
   signer=await p.getSigner(); me=(await signer.getAddress()).toLowerCase();
   C=new ethers.Contract(ADDR,ABI,signer);
   document.getElementById("conn").style.display="none";
