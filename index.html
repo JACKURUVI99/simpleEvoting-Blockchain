@@ -23,6 +23,9 @@ small{color:#888}
     <input id="rpw" placeholder="Room password">
     <button onclick="openE()">Open</button>
   </fieldset>
+  <fieldset><legend>All elections <button onclick="listAll()">&#8635;</button></legend>
+    <div id="all"><small>&mdash;</small></div>
+  </fieldset>
   <div id="room"></div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
@@ -40,15 +43,23 @@ async function connect(){
   C=new ethers.Contract(ADDR,ABI,signer);
   document.getElementById("conn").style.display="none";
   document.getElementById("app").style.display="block";
-  S("Connected: "+me);
+  S("Connected: "+me); listAll();
 }
+async function listAll(){
+  const n=Number(await C.electionCount());
+  let h=n?"":"<small>No elections yet — create one above.</small>";
+  for(let i=1;i<=n;i++){const f=await C.getInfo(i);
+    h+=`<div class="c"><span>#${i} · ${f[0]} · ${f[2]?"LIVE":"ENDED"}</span><button onclick="pick(${i})">Use ID</button></div>`;}
+  document.getElementById("all").innerHTML=h;
+}
+function pick(i){rid.value=i;rpw.focus();}
 async function createE(){
   try{
     S("Creating room…");
     const tx=await C.createElection(ctitle.value,cpw.value);
     const r=await tx.wait();
     const ev=r.logs.map(l=>{try{return C.interface.parseLog(l)}catch{}}).find(x=>x&&x.name==="ElectionCreated");
-    S("Room created! Share Room ID = "+ev.args.id+" and the password with voters.");
+    S("Room created! Share Room ID = "+ev.args.id+" and the password with voters."); listAll();
   }catch(e){S(e.reason||e.message)}
 }
 async function openE(){
